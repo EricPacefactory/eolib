@@ -1,0 +1,4 @@
+# Project files
+*.pyc
+__pycache__
+
