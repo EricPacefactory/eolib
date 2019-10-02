@@ -152,8 +152,209 @@ def build_folder_structure_from_dictionary(base_path, dictionary, make_folders =
     return path_list
 
 # .....................................................................................................................
-    
 
+# Function for listing folders in a given folder
+def get_folder_list(search_folder_path, 
+                    show_hidden_folders = False,
+                    create_missing_folder = False, 
+                    return_full_path = False,
+                    sort_list = True):
+    
+    '''
+    Returns a list of all folders in the specified search folder
+    '''
+    
+    # Make sure the search folder exists before trying to list it's contents!
+    if not os.path.exists(search_folder_path):
+        if create_missing_folder:
+            os.makedirs(search_folder_path)
+        return []
+    
+    # Take out only the files from the list of items in the search folder
+    folder_list = [each_entry for each_entry in os.listdir(search_folder_path) 
+                   if os.path.isdir(os.path.join(search_folder_path, each_entry))]
+    
+    # Sort if needed
+    if sort_list:
+        folder_list.sort()    
+    
+    # Hide folders beginning with dots (i.e. hidden)
+    if not show_hidden_folders:
+        folder_list = [each_folder for each_folder in folder_list if each_folder[0] != "."]
+    
+    # Prepend the search folder path if desired
+    if return_full_path:
+        folder_list = [os.path.join(search_folder_path, each_folder) for each_folder in folder_list]
+
+    return folder_list
+
+# .....................................................................................................................
+    
+# Function for listing files in a given folder
+def get_file_list(search_folder_path, 
+                  show_hidden_files = False, 
+                  create_missing_folder = False, 
+                  return_full_path = False,
+                  sort_list = True,
+                  allowable_exts_list = []):
+    
+    '''
+    Returns a list of all files in the specified search folder
+    '''
+    
+    # Make sure the search folder exists before trying to list it's contents!
+    if not os.path.exists(search_folder_path):
+        if create_missing_folder:
+            os.makedirs(search_folder_path)
+        return []
+    
+    # Take out only the files from the list of items in the search folder
+    file_list = [each_entry for each_entry in os.listdir(search_folder_path) 
+                 if os.path.isfile(os.path.join(search_folder_path, each_entry))]
+    
+    # Remove entries that don't have the target extensions
+    if allowable_exts_list:
+        
+        # Clean up the allowable extensions list (add preceeding . and lowercase!), in case the user entered them funny
+        safeify_ext = lambda ext: ".{}".format(ext.lower()) if ext[0] != "." else ext.lower()
+        safe_exts = [safeify_ext(each_ext) for each_ext in allowable_exts_list]
+        
+        # Filter out files that don't have an extension from the (safe-ified) allowable ext list
+        keep_file = lambda file, ext_list: (os.path.splitext(file)[1].lower() in ext_list)
+        file_list = [each_file for each_file in file_list if keep_file(each_file, safe_exts)]
+    
+    # Sort if needed
+    if sort_list:
+        file_list.sort()
+    
+    # Hide files beginning with dots (i.e. hidden)
+    if not show_hidden_files:
+        file_list = [each_file for each_file in file_list if each_file[0] != "."]
+    
+    # Prepend the search folder path if desired
+    if return_full_path:
+        file_list = [os.path.join(search_folder_path, each_file) for each_file in file_list]
+    
+    return file_list
+
+# .....................................................................................................................
+    
+def sort_path_list_by_age(path_list, newest_first, return_full_path = True):
+    
+    '''
+    Returns two lists:
+    sorted_ages, sorted_names_or_paths
+    '''
+    
+    # Bail if we have an empty list
+    if len(path_list) == 0:
+        return ((), ())
+    
+    # Check the modification time (as a measure of age)
+    path_ages = [os.path.getmtime(each_path) for each_path in path_list]
+    
+    # Generate a list of basenames if we don't want to return the full paths
+    if not return_full_path:
+        name_list = [os.path.basename(each_path) for each_path in path_list]
+    
+    # Sort files by age before returning the file paths/names
+    list_to_sort = path_list if return_full_path else name_list
+    sorted_ages, sorted_names_or_paths = zip(*sorted(zip(path_ages, list_to_sort), reverse = newest_first))
+    
+    return sorted_ages, sorted_names_or_paths
+
+# .....................................................................................................................
+    
+def get_file_list_by_age(search_folder_path,
+                         newest_first = True,
+                         show_hidden_files = False,
+                         create_missing_folder = False,
+                         return_full_path = False,
+                         allowable_exts_list = []):
+    
+    '''
+    Returns two lists:
+    sorted_ages, sorted_names_or_paths
+    '''
+    
+    # Get pathing to every file in the search folder
+    path_list = get_file_list(search_folder_path, 
+                              show_hidden_files = show_hidden_files, 
+                              create_missing_folder = create_missing_folder, 
+                              return_full_path = True,
+                              sort_list = False,
+                              allowable_exts_list = allowable_exts_list)
+    sorted_ages, sorted_names_or_paths = sort_path_list_by_age(path_list, newest_first, return_full_path)
+    
+    return sorted_ages, sorted_names_or_paths
+
+# .....................................................................................................................
+    
+def get_folder_list_by_age(search_folder_path, 
+                           newest_first = True, 
+                           show_hidden_folders = False, 
+                           create_missing_folder = False,
+                           return_full_path = False):
+    
+    '''
+    Returns two lists:
+    sorted_ages, sorted_names_or_paths
+    '''
+    
+    # Get pathing to every file in the search folder
+    path_list = get_folder_list(search_folder_path, 
+                                show_hidden_folders = show_hidden_folders, 
+                                create_missing_folder = create_missing_folder,
+                                sort_list = False,
+                                return_full_path = True)
+    sorted_ages, sorted_names_or_paths = sort_path_list_by_age(path_list, newest_first, return_full_path)
+    
+    return sorted_ages, sorted_names_or_paths
+
+# .....................................................................................................................
+
+def get_total_folder_size(folder_path, size_units = "M"):
+    
+    ''' 
+    Function for calculating the total size of all contents within the given folder path
+    Inputs:
+        folder_path -> String. Path of parent folder whose total size is to be checked
+        
+        size_units -> String. One of None, "k", "M", "G", representing the unit scaling of the output
+                      (None returns units in bytes, other options scale by powers of 1024)
+                      
+    Outputs:
+        file_count, subdirectory_count, total_file_size, total_subdirectory_size
+    '''
+    
+    # Create helper functions to deal with os.walk output pathing
+    get_file_path = lambda dir_path, file: os.path.join(dir_path, file)
+    get_file_size = lambda dir_path, file: os.path.getsize(get_file_path(dir_path, file))
+    
+    # Initialize loop counters
+    file_count = 0
+    subdir_count = 0
+    total_file_size = 0
+    total_subdir_size = 0
+    
+    # Step through each directory (recursively) and sum the size of all folders & files
+    for each_dir_path, each_subdir_list, each_file_list in os.walk(folder_path):
+        
+        file_count += len(each_file_list)
+        subdir_count += len(each_subdir_list)
+        total_file_size += sum((get_file_size(each_dir_path, each_file) for each_file in each_file_list))
+        total_subdir_size += os.path.getsize(each_dir_path)
+        
+    # Scale output
+    scaling_lut = {None: 1, "k": 1024, "m": 1024 ** 2, "g": 1024 ** 3, "p": 1024 ** 4}
+    safe_size_units = size_units.strip().lower() if size_units is not None else None
+    scaling_factor = scaling_lut.get(safe_size_units, 1)
+    scaled_file_size = (total_file_size / scaling_factor)
+    scaled_dir_size = (total_subdir_size / scaling_factor)
+    
+    return file_count, subdir_count, scaled_file_size, scaled_dir_size
+
+# .....................................................................................................................
 # .....................................................................................................................
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -393,7 +594,7 @@ def cli_prompt_with_defaults(prompt_message,
     full_message = "".join([prefix_1, default_msg, prompt_message, suffix_1])
 
     # Get user input or use default if nothing is provided
-    user_response = input(full_message).strip().lower()
+    user_response = input(full_message).strip()
     if user_response == "":
         user_response = default_value
         

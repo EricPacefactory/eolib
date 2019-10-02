@@ -390,6 +390,103 @@ class Process_Timer:
     # .................................................................................................................
 
     
+# =====================================================================================================================
+# =====================================================================================================================
+# =====================================================================================================================
+
+
+class Progress_Bar:
+    
+    # .................................................................................................................
+    
+    def __init__(self, total_iterations, 
+                 window_label="Progress", 
+                 bar_color = (85, 75, 7), 
+                 bg_color = (20, 20, 20),
+                 displayWH = (500, 80), 
+                 barWH = (400, 40),
+                 update_rate = 1,
+                 center_on_start = True,
+                 enable_display = True):
+        
+        # Store iteration variables
+        self.current_iteration = 0
+        self.total_iterations = total_iterations
+        
+        # Store other aesthetic variables
+        self.window_label = window_label
+        self.bar_color = bar_color
+        self.displayWH = displayWH
+        self.barWH = barWH
+        self.update_rate = update_rate
+        
+        # Calculate the location/drawing points for the progress bar
+        half_width = (displayWH[0] - barWH[0]) / 2
+        half_height = (displayWH[1] - barWH[1]) / 2
+        self.bar_tl = (int(half_width), int(half_height))
+        self.bar_br = (int(half_width + barWH[0]), int(half_height + barWH[1]))
+        
+        # Create the initial empty image to draw in to
+        self.base_image = np.full((displayWH[1], displayWH[0], 3), bg_color, dtype=np.uint8)
+        
+        # Finally, create progress bar window
+        self.enable_display = enable_display
+        if enable_display:
+            self.prog_window = SimpleWindow(window_label)
+            self.prog_window.imshow(self.base_image)
+            
+            # Center the progress bar (if desired)
+            if center_on_start:
+                center_window(self.prog_window, frameWH=displayWH)
+    
+    # .................................................................................................................
+    
+    def update(self, run_waitKey = True):
+        
+        # Auto increment the iterations
+        self.current_iteration += 1
+        
+        # Don't do anything if there is no display
+        if not self.enable_display:
+            return True
+        
+        # Don't bother doing anything if the window doesn't exist
+        if not self.prog_window.exists():
+            return False
+        
+        # Only update the image based on the update rate (i.e. 'timelapsed')
+        if (self.current_iteration % self.update_rate) == 0:
+            frame_image = self._draw_progress_bar(self.base_image)
+            final_image = self._draw_border(frame_image)
+            self.prog_window.imshow(final_image)
+            
+            if run_waitKey:
+                cv2.waitKey(1)
+            
+        return True
+        
+    # .................................................................................................................
+    
+    def _draw_progress_bar(self, in_image):
+        progress_width = min((self.current_iteration / self.total_iterations), 1) * self.barWH[0]
+        prog_draw_x = int(round(self.bar_tl[0] + progress_width))
+        prog_br = (prog_draw_x, self.bar_br[1])
+        return cv2.rectangle(in_image, self.bar_tl, prog_br, self.bar_color, -1, cv2.LINE_4)
+    
+    # .................................................................................................................
+    
+    def _draw_border(self, in_image):             
+        return cv2.rectangle(in_image, self.bar_tl, self.bar_br, (200, 200, 200), 1, cv2.LINE_4)
+    
+    # .................................................................................................................
+    
+    # .................................................................................................................
+    
+# =====================================================================================================================
+# =====================================================================================================================
+# =====================================================================================================================
+
+    
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Define functions
     

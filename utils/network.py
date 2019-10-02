@@ -10,7 +10,7 @@ Created on Mon Dec 17 18:54:22 2018
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Imports
 
-import socket
+
 
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Define classes
@@ -24,6 +24,8 @@ import socket
 # .....................................................................................................................
 
 def get_own_ip(default_missing_ip = "192.168.0.0"):
+    
+    import socket
     
     # From:
     # https://stackoverflow.com/questions/166506/finding-local-ip-addresses-using-pythons-stdlib
@@ -39,11 +41,82 @@ def get_own_ip(default_missing_ip = "192.168.0.0"):
 
 # .....................................................................................................................
     
+def build_rtsp_string(ip_address, username, password = "", route = "", port = 554,
+                      when_ip_is_bad_return = ""):
+    
+    # Bail if the ip isn't valid
+    valid_ip = check_valid_ip(ip_address, return_error = False)
+    if not valid_ip:
+        return when_ip_is_bad_return
+    
+    # Build username/password section
+    user_pass_str = username
+    user_pass_str += ":{}".format(password) if password else ""
+    
+    # Build ip/port/route section
+    ip_port_route_str = "@" if user_pass_str else ""
+    ip_port_route_str += "{}:{:.0f}/{}".format(ip_address, port, route)
+    
+    # Finally, build the full rtsp string using the pre-built sections
+    rtsp_string = "".join(["rtsp://", user_pass_str, ip_port_route_str])
+    
+    return rtsp_string
+
 # .....................................................................................................................
     
+def parse_rtsp_string(rtsp_string):
+    
+    # First make sure we got a valid rtsp string!
+    search_prefix = "rtsp://"
+    string_prefix = rtsp_string[:len(search_prefix)]
+    if string_prefix != search_prefix:
+        raise TypeError("Not a valid RTSP string: {}".format(rtsp_string))
+    
+    # Split rtsp prefix from the rest of the info
+    rtsp_prefix, info_string = rtsp_string.split(search_prefix)
+    
+    # Split user/pass from ip/port/route data
+    user_pass, ip_port_route = info_string.split("@") if "@" in info_string else ("", info_string)
+    
+    # Get username/password
+    username, password = user_pass.split(":") if ":" in user_pass else (user_pass, "")
+    
+    # Get ip, port and route
+    ip_port, *route = ip_port_route.split("/") if "/" in ip_port_route else (ip_port_route, "")
+    ip_address, port = ip_port.split(":") if ":" in ip_port else (ip_port, 554)
+    check_valid_ip(ip_address)
+    
+    # Clean up the port/route values
+    port = int(port)
+    route = "/".join(route)
+    
+    # Build the rtsp dictionary for output
+    output_rtsp_dict = {"ip_address": ip_address,
+                        "username": username,
+                        "password": password,
+                        "port": port,
+                        "route": route}
+    
+    return output_rtsp_dict
+    
 # .....................................................................................................................
+    
+def check_valid_ip(ip_address, return_error = True):
+    
+    import ipaddress
+    
+    try:
+        ipaddress.ip_address(ip_address)
+        
+    except ValueError as err:
+        if return_error:
+            raise err
+        return False
+    
+    return True
     
 # .....................................................................................................................
     
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Scrap
+
