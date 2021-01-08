@@ -47,7 +47,7 @@ class Mouse_Follower:
         
         # Check that all follow states are valid (remove non-valids)
         follow_check = state_list if follow_states is None else follow_states
-        follow_check = follow_check if type(follow_check) in [list, tuple] else [follow_check]
+        follow_check = follow_check if type(follow_check) in {list, tuple} else [follow_check]
         for idx, each_state in enumerate(reversed(follow_check)):
             if each_state not in state_list:
                 print("")
@@ -56,7 +56,7 @@ class Mouse_Follower:
         
         # Check that all non-follow states are valid (remove non-valids)
         no_follow_check = [] if no_follow_states is None else no_follow_states
-        no_follow_check = no_follow_check if type(no_follow_check) in [list, tuple] else [no_follow_check]
+        no_follow_check = no_follow_check if type(no_follow_check) in {list, tuple} else [no_follow_check]
         for idx, each_state in enumerate(reversed(no_follow_check)):
             if each_state not in state_list:
                 print("")
@@ -254,7 +254,7 @@ class Polygon_Drawer:
     def left_drag(self):
         
         # Update the dragged points based on the mouse position
-        if None not in [self.zone_select, self.point_select]:            
+        if None not in {self.zone_select, self.point_select}:            
             self.zone_list[self.zone_select][self.point_select] = self.mouse_xy
             self._flag_change()
     
@@ -805,7 +805,7 @@ class Interactive_Rectangle(Interactive_Quadrilateral):
     def left_drag(self):
         
         # Update the dragged points based on the mouse position
-        if None not in [self.zone_select, self.point_select]:            
+        if None not in {self.zone_select, self.point_select}:            
             self._rectangularize(self.zone_select, self.point_select)
             
     # .................................................................................................................

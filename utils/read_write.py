@@ -15,6 +15,8 @@ import json
 import gzip
 import csv
 
+import numpy as np
+
 
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Define classes
@@ -88,6 +90,26 @@ def build_target_path(file_path, *, target_folder = None, target_name = None, ta
     return save_path
 
 # .....................................................................................................................
+
+def numpy_array_to_list(input_data):
+    
+    ''' Function used to convert numpy array data to lists, intended for saving in json format '''    
+    
+    # Convert numpy arrays to lists before saving (so that data is json serializable)
+    if type(input_data) is np.ndarray:
+        return input_data.tolist()
+    
+    # Convert lists of numpy arrays to lists of lists
+    if type(input_data) in (list, tuple):
+        output_data = []
+        for each_entry in input_data:
+            entry_is_array = (type(each_entry) is np.ndarray)
+            output_data.append(each_entry.tolist() if entry_is_array else each_entry)
+        return output_data
+            
+    return input_data
+
+# .....................................................................................................................
 # .....................................................................................................................
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -152,9 +174,9 @@ def get_json_path(load_path, error_if_missing = True):
         elif path_exists(jsongz_ext_load_path):
             load_path = jsongz_ext_load_path
         else:
-            load_path = None
             if error_if_missing:
                 raise FileNotFoundError("Couldn't find a file @ {}".format(load_path))
+            load_path = None
     
     return load_path
 
@@ -188,12 +210,16 @@ def load_json(load_path, convert_integer_keys = False, error_if_missing = True):
     use_gzip = load_path.endswith(".json.gz")
     
     # Use gzip to unzip the json data before loading, if needed
-    if use_gzip:
-        with gzip.open(load_path, 'rt') as in_file:
-            json_data = json.load(in_file)
-    else:        
-        with open(load_path, "r") as in_file:
-            json_data = json.load(in_file)
+    try:
+        if use_gzip:
+            with gzip.open(load_path, 'rt') as in_file:
+                json_data = json.load(in_file)
+        else:
+            with open(load_path, "r") as in_file:
+                json_data = json.load(in_file)
+    except json.JSONDecodeError as err:
+        print("","", "ERROR:", "Problem with json decoding:", "@ {}".format(load_path), "", sep = "\n")
+        raise err
     
     # JSON files cannot save numeric keys (but these are valid in python dictionaries). So convert if needed
     if convert_integer_keys:
@@ -203,7 +229,8 @@ def load_json(load_path, convert_integer_keys = False, error_if_missing = True):
 
 # .....................................................................................................................
     
-def save_json(save_path, json_data, indent = 2, sort_keys = False, check_validity = False, use_gzip = False):
+def save_json(save_path, json_data, indent = 2, sort_keys = False, check_validity = False, use_gzip = False,
+              create_missing_folder_path = False):
     
     '''
     Function which saves json files. Will automatically add ".json" or ".json.gz" extension, 
@@ -226,7 +253,9 @@ def save_json(save_path, json_data, indent = 2, sort_keys = False, check_validit
         
         use_gzip -> Boolean. If true, the json file will be compressed using gzip. 
                     Indenting and sorting arguments are ignored when compressing, along with using compact separators
-                    
+        
+        create_missing_folder_path -> Boolean. If true, the folder pathing to the given file will be checked,
+                                      and if missing, will be created
     Outputs:
         actual_save_path
     '''
@@ -238,6 +267,11 @@ def save_json(save_path, json_data, indent = 2, sort_keys = False, check_validit
     # Try converting to json to watch for errors, if needed
     if check_validity:
         _ = json.dumps(json_data)
+    
+    # Create the parent folder, if needed
+    if create_missing_folder_path:
+        parent_folder = os.path.dirname(modified_save_path)
+        os.makedirs(parent_folder, exist_ok = True)
         
     # Use gzip compression if needed
     if use_gzip:

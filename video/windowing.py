@@ -668,7 +668,7 @@ def arrange_windows(rows, cols, window_list, padding_tlbr = [20, 20, 20, 20]):
     
     # Try to figure out the padding settings
     try:
-        if type(padding_tlbr) in [list, tuple]:
+        if type(padding_tlbr) in {list, tuple}:
             pad_top = padding_tlbr[0]
             pad_left = padding_tlbr[1]
             pad_bot = padding_tlbr[2]
@@ -781,7 +781,7 @@ def check_os(target_os = None):
         
     # Make sure the target os is a valid choice
     target_os = target_os.lower()
-    if target_os not in ["windows", "mac", "linux"]:
+    if target_os not in {"windows", "mac", "linux"}:
         raise NameError("Target OS not recognized! Must be 'windows', 'mac' or 'linux'")
     
     # Return target check

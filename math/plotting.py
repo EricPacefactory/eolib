@@ -85,7 +85,7 @@ class Simple_XY:
                 self._min_x = None
                 self._max_x = None
             
-            if None in [self._min_x, self._max_x]:
+            if None in {self._min_x, self._max_x}:
                 min_x = np.min(x_data) if self._min_x is None else self._min_x
                 max_x = np.max(x_data) if self._max_x is None else self._max_x                
                 self.xlim(min_x, max_x, round_nearest_x)
@@ -95,7 +95,7 @@ class Simple_XY:
                 self._min_y = None
                 self._max_y = None
             
-            if None in [self._min_y, self._max_y]:
+            if None in {self._min_y, self._max_y}:
                 min_y = np.min(y_data) if self._min_y is None else self._min_y
                 max_y = np.max(y_data) if self._max_y is None else self._max_y
                 self.ylim(min_y, max_y, round_nearest_y)
@@ -258,9 +258,9 @@ class Simple_XY:
     def _generate_normalizing_funcs(self):
         
         # Create scaling functions that map smallest values to 0 and largest to 1 (i.e. normalizing)
-        if None not in [self._min_x, self._max_x]:
+        if None not in {self._min_x, self._max_x}:
             self._xscale = lambda x: (x - self._min_x) / (self._max_x - self._min_x)
-        if None not in [self._min_y, self._max_y]:
+        if None not in {self._min_y, self._max_y}:
             self._yscale = lambda y: (y - self._min_y) / (self._max_y - self._min_y)
     
     # .................................................................................................................  
@@ -292,7 +292,7 @@ class Simple_XY:
         text_settings = self._customized_text(fontFace, fontScale, color, thickness, lineType)   
         
         # Calculate the tick positions (or take direct, if input isn't a scalar)
-        norm_pos = np.linspace(0, 1, ticks) if type(ticks) in [int, float] else ticks
+        norm_pos = np.linspace(0, 1, ticks) if type(ticks) in {int, float} else ticks
         norm_pos = np.float32(norm_pos)
         
         # Calculate tick positions on the plot itself (to save time figuring them out when drawing)
@@ -329,7 +329,7 @@ class Simple_XY:
                          self.gfx["fg_color"], self.gfx["line_thickness"], cv2.LINE_4)
                 
             # Draw tick labels (i.e. numbers corresponding to plotting position)
-            if None not in [self._min_x, self._max_x] and self._x_ticks["enable_labels"]:
+            if None not in {self._min_x, self._max_x} and self._x_ticks["enable_labels"]:
                 
                 # Get some convenient variables...
                 dx = self._max_x - self._min_x                
@@ -367,7 +367,7 @@ class Simple_XY:
         text_settings = self._customized_text(fontFace, fontScale, color, thickness, lineType)   
         
         # Calculate the tick positions (or take direct, if input isn't a scalar)
-        norm_pos = np.linspace(0, 1, ticks) if type(ticks) in [int, float] else ticks
+        norm_pos = np.linspace(0, 1, ticks) if type(ticks) in {int, float} else ticks
         norm_pos = np.float32(norm_pos)
         
         # Calculate tick positions on the plot itself (to save time figuring them out when drawing)
@@ -403,7 +403,7 @@ class Simple_XY:
                          self.gfx["fg_color"], self.gfx["line_thickness"], cv2.LINE_4)
                 
             # Draw tick labels (i.e. numbers corresponding to plotting position)
-            if None not in [self._min_y, self._max_y] and self._y_ticks["enable_labels"]:
+            if None not in {self._min_y, self._max_y} and self._y_ticks["enable_labels"]:
                 
                 # Get some convenient variables...
                 dy = self._max_y - self._min_y                

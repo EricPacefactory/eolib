@@ -14,6 +14,8 @@ import os
 import cv2
 import datetime as dt
 
+from tempfile import TemporaryDirectory
+
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Define classes
 
@@ -203,22 +205,13 @@ class Video_Recorder:
             return str_to_print
         
     # .................................................................................................................
-    
-    def find_valid_codec(self):
-        
-        # Function that should try making a few videos with various codecs to see which one works
-        # (different systems may support different codecs!)
-        raise NotImplementedError("Sorry, not done yet!")
-        
-    # .................................................................................................................
         
     def _create_video_writer(self, is_color = True):
         
         # Handle disabled case
         if self._disabled:
             return
-    
-    
+        
         # Make sure the save pathing is ok
         os.makedirs(os.path.dirname(self.save_path), exist_ok = True)
         
@@ -232,19 +225,16 @@ class Video_Recorder:
             raise AttributeError("FPS not set")
         
         self.video_writer = cv2.VideoWriter(self.save_path,
-                                             self._fourcc,
-                                             self.fps,
-                                             self.frameWH,
-                                             is_color)
+                                            self._fourcc,
+                                            self.fps,
+                                            self.frameWH,
+                                            is_color)
         
         # Only try to set the video quality if it was specified
         if self.video_quality is not None:
             self.set_quality(self.video_quality)
         
-    # .................................................................................................................
-    
-    # .................................................................................................................
-    
+    # .................................................................................................................    
     # .................................................................................................................
     
     
@@ -793,6 +783,77 @@ def get_video_rtsp_info(video_source, error_if_not_rtsp = True):
 
 # .....................................................................................................................
         
+def get_recording_parameters():
+    
+    '''
+    Function for determining valid video recording codecs & corresponding file extensions.
+    Based on how OpenCV is installed, not all codecs & file extensions are valid/available.
+    Particularly, the most efficient known codec (avc1/H264) doesn't work with pip installed (typically).
+    So this function will search for alternate codecs/extensions, in order of decreasing compression performance.
+    
+    Note that this function has some feedback printouts, and also does not supress OpenCV error messages,
+    which seem to print from a separate process, making them hard to block...
+    
+    Inputs:
+        None!
+        
+    Outputs:
+        codec (String), file_ext (String)
+        (Example output: "avc1", ".mp4")
+    '''
+    
+    # Hard-code the list of codec/extensions to test
+    test_file_list = ["avc1.mp4",
+                      "avc1.avi",
+                      "XVID.mkv",
+                      "XVID.avi",
+                      "MJPG.mp4",
+                      "MJPG.avi"]
+    
+    # Hard-code some recording settings
+    is_color = True
+    fps = 30.0
+    frame_wh = (64, 64)
+    num_frames = 5
+    
+    # Create a dummy frame to record
+    rec_frame = np.random.randint(0, 255, (frame_wh[1], frame_wh[0], 3), dtype = np.uint8)
+    
+    # Create a temporary directory to dump test recording, so they get deleted when we're done
+    print("", "Determining valid video recording codec/file extension...", sep = "\n")
+    with TemporaryDirectory() as temp_dir_path:
+        
+        # Loop through each codec/extension until we successfully create a file
+        for each_test_file_name in test_file_list:
+            
+            # Build save pathing for each test file
+            each_codec, each_ext = os.path.splitext(each_test_file_name)
+            test_save_path = os.path.join(temp_dir_path, each_test_file_name)
+            
+            # Get FourCC code for the given codec
+            fourcc = cv2.VideoWriter_fourcc(*each_codec)
+            
+            # Create video writer & write dummy frames
+            video_writer = cv2.VideoWriter(test_save_path, fourcc, fps, frame_wh, is_color)
+            for _ in range(num_frames):
+                video_writer.write(rec_frame)
+            video_writer.release()
+            
+            # Check file size, if the file exists!
+            file_exists = (os.path.exists(test_save_path))
+            file_size_bytes = os.path.getsize(test_save_path) if file_exists else 0
+            
+            # If the file size is non-zero, then we succeeded and can stop trying video formats!
+            if file_size_bytes > 500:
+                break
+    
+    # Finally, report & return the 'good' codec and file extension
+    print("  --> Found {} / {}".format(each_codec, each_ext))
+    
+    return each_codec, each_ext
+
+# .....................................................................................................................
+# .....................................................................................................................
 
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Demo

@@ -19,26 +19,44 @@ import numpy as np
 
 class Fixed_Line_Cross:
     
+    '''
+    Class for implementing line segment intersection tests with a fixed line segment
+    The input points (line_pt1, line_pt2) can be in pixels or normalized units,
+    as long as intersections and/or orientation tests use points with the same units.
+    
+    If 'is_normalized' is None, the type of the points (normalized or not) will be inferred.
+    This input can be set to True/False to force the type (affects drawing).
+    (points are assumed to be normalized if all x/y values are less than 2)
+    
+    Note that the order of line_pt1 & line_pt2 determine the orientation of this line!
+    To make sense of the line orientation, consider the line to be the hand of a clock.
+    line_pt1 can be thought of as the center of the clock (i.e. the pivot point), 
+    line_pt2 can be thought of as the tip of the clock hand.
+    
+    When running orientation/intersections with this line, points that are on the 'counter-clockwise' side
+    of the line are considered negative, while points that are on the 'clockwise' side are positive.
+    '''
+    
     # .................................................................................................................
     
     def __init__(self, line_pt1, line_pt2, flip_orientation = False, is_normalized = None):
         
         '''
-        Class for implementing line segment intersection tests with a fixed line segment
-        The input points (line_pt1, line_pt2) can be in pixels or normalized units,
-        as long as intersections and/or orientation tests use points with the same units.
+        Inputs:
+            line_pt1: Pair of x/y points. Input can be integer (pixels) or floats (fractional pixels or normalized),
+                      Represents the 'start' of the line segment, assuming the orientation isn't flipped.
+            
+            line_pt2: Pair of x/y points, similar to line_pt1, but representing the end of the line segment.
+            
+            flip_orientation: Boolean. If True, the orientation of the line is interpretted in reverse.
+            
+            is_normalized: Boolean or None. If None, the 'units' (normalized/pixels) of the provided end points
+                           will be inferred (if either contains values >2, they are assumed to be in pixel units)
         
-        If 'is_normalized' is None, the type of the points (normalized or not) will be inferred.
-        This input can be set to True/False to force the type (affects drawing).
-        (points are assumed to be normalized if all x/y values are less than 2)
-        
-        Note that the order of line_pt1 & line_pt2 determine the orientation of this line!
-        To make sense of the line orientation, consider the line to be the hand of a clock.
-        line_pt1 can be thought of as the center of the clock (i.e. the pivot point), 
-        line_pt2 can be thought of as the tip of the clock hand.
-        
-        When running orientation/intersections with this line, points that are on the 'counter-clockwise' side
-        of the line are considered negative, while points that are on the 'clockwise' side are positive.
+        *** If using this object to check a line intersection with another line segment, 
+        *** see the .segment_intersection(...) function
+        *** If using this object to check intersections against entire paths, 
+        *** see the .path_intersection(...) function
         '''
         
         # Record whether this line is using normalized co-ordinates (if needed)
@@ -53,7 +71,7 @@ class Fixed_Line_Cross:
         self.pt2 = np.array(line_pt2 if not flip_orientation else line_pt1)
         self.pt_mid = np.mean(np.array((self.pt1, self.pt2)), axis = 0)
         
-        # Get bounding box of the line, so we can enable quick box overlap checks
+        # Get bounding box of the line, so we can enable quick box overlap checks (if needed)
         self.line_box_tlbr = self._get_line_bounding_box_tlbr()
         
         # Get line rotation matrix, used to rotate other points relative to itself, to check for line crosses
@@ -161,7 +179,7 @@ class Fixed_Line_Cross:
     
     # .................................................................................................................
     
-    def intersection(self, line_start_xy, line_end_xy, reverse_line_direction = False):
+    def segment_intersection(self, segment_start_xy, segment_end_xy, reverse_segment_direction = False):
         
         '''
         Function for checking for line segment intersections
@@ -187,8 +205,8 @@ class Fixed_Line_Cross:
         '''
         
         # Rotate/shift other line segment to make cross-detection simpler
-        line_pt1 = line_end_xy if reverse_line_direction else line_start_xy
-        line_pt2 = line_start_xy if reverse_line_direction else line_end_xy
+        line_pt1 = segment_end_xy if reverse_segment_direction else segment_start_xy
+        line_pt2 = segment_start_xy if reverse_segment_direction else segment_end_xy
         (pt1_x_rot_dist, pt1_y_rot_dist) = self.orient_to_self(line_pt1)
         (pt2_x_rot_dist, pt2_y_rot_dist) = self.orient_to_self(line_pt2)
         
@@ -197,27 +215,107 @@ class Fixed_Line_Cross:
         cross_direction = None
         intersection_point = None
         
-        # Assuming points are rotated so that reference line is oriented vertically
-        pt1_sign = np.sign(pt1_x_rot_dist)
-        pt2_sign = np.sign(pt2_x_rot_dist)
-        crossed_horizontally = (pt1_sign != pt2_sign)
+        # Check if the line segment crosses the fixed line horizontally (after re-orientation)
+        crossed_horizontally, cross_direction = \
+        self._check_rotated_horizontal_intersection(pt1_x_rot_dist, pt2_x_rot_dist)
         if not crossed_horizontally:
             return intersected, cross_direction, intersection_point
         
         # Check that the line actually intersects the reference line vertically (didn't skip over it)
-        # (Using similar triangles to find intersection height on reference line)
-        deltay_over_deltax =  (pt1_y_rot_dist - pt2_y_rot_dist) / (pt1_x_rot_dist - pt2_x_rot_dist)
-        intersection_height = (pt1_x_rot_dist * deltay_over_deltax) - pt1_y_rot_dist
-        crossed_vertically = 0 < intersection_height < self.length
+        crossed_vertically, intersection_point = \
+        self._check_rotated_vertical_intersection(pt1_x_rot_dist, pt1_y_rot_dist, pt2_x_rot_dist, pt2_y_rot_dist)
         if not crossed_vertically:
             return intersected, cross_direction, intersection_point
         
-        # If we got here, we've got an intersection! Now figure out the direction/location of the intersection
+        # If we got here, we've got an intersection
         intersected = True
-        cross_direction = self._cross_direction_lookup(pt1_sign, pt2_sign)
-        intersection_point = self.revert_orient_to_self((0, -intersection_height))
         
         return intersected, cross_direction, intersection_point
+    
+    # .................................................................................................................
+    
+    def _check_rotated_horizontal_intersection(self, rotated_x1, rotated_x2):
+        
+        '''
+        Helper function which checks for horizontal intersections, 
+        assuming the inputs have already been rotated to be oriented to the line
+        '''
+        
+        # Note: np.sign(...) & != check seems as fast or faster than np.signbit, even if using bitwise comparison!
+        pt1_sign = np.sign(rotated_x1)
+        pt2_sign = np.sign(rotated_x2)
+        crossed_horizontally = (pt1_sign != pt2_sign)
+        
+        # Check the cross direction, if needed
+        cross_direction = None
+        if crossed_horizontally:
+            cross_direction = self._cross_direction_lookup(pt1_sign, pt2_sign)
+        
+        return crossed_horizontally, cross_direction
+    
+    # .................................................................................................................
+    
+    def _check_rotated_vertical_intersection(self, rotated_x1, rotated_y1, rotated_x2, rotated_y2):
+        
+        ''' 
+        Helper function which checks for vertical intersections, 
+        assuming the inputs have already been rotated to be oriented to the line
+        '''
+        
+        # Using similar triangles to find intersection height on reference line
+        dy_over_dx =  (rotated_y1 - rotated_y2) / (rotated_x1 - rotated_x2)
+        intersection_height = (rotated_x1 * dy_over_dx) - rotated_y1
+        crossed_vertically = (0 < intersection_height < self.length)
+        
+        # Check the intersection point, if needed
+        intersection_point = None
+        if crossed_vertically:
+            intersection_point = self.revert_orient_to_self((0, -intersection_height))
+        
+        return crossed_vertically, intersection_point
+    
+    # .................................................................................................................
+    
+    def path_intersection(self, path_xy, reverse_path_direction = False):
+        
+        '''
+        Function for checking intersections with entire paths (i.e. many line segments)
+        Input should be an array of xy points with the same units as the fixed line points 
+        (can be pixels or normalized as long as units are consistent)
+        
+        Returns a list of intersection events
+            Each 'event' is a dictionary containing keys:
+                "path_index", "cross_direction", "intersection_point"
+        '''
+        
+        # First re-orient the path to the line orientation
+        oriented_path_xy = self.orient_to_self(path_xy)
+        
+        # Find all potential intersection points, by finding sign changes in the x co-ordinate
+        x_signs = np.sign(oriented_path_xy[:, 0])
+        x_sign_changes = np.where(np.diff(x_signs))[0]
+        
+        # Loop through all sign change indices, and check if they correspond to intersection events
+        intersection_events_list = []
+        for each_idx in x_sign_changes:
+            
+            # Graqb the line segment where we detected a horizontal sign change
+            seg_x1, seg_y1 = oriented_path_xy[each_idx]
+            seg_x2, seg_y2 = oriented_path_xy[1 + each_idx]
+            
+            # Check if the segment also crossed the line vertically (after re-orientation)
+            crossed_vertically, intersection_point = \
+            self._check_rotated_vertical_intersection(seg_x1, seg_y1, seg_x2, seg_y2)
+            
+            # Only record intersection if the x-sign changes have a corresponding vertical crossing
+            if crossed_vertically:
+                cross_direction = self._cross_direction_lookup(np.sign(seg_x1), np.sign(seg_x2))
+                new_intersection_event = {"path_index": (1 + each_idx),
+                                          "cross_direction": cross_direction,
+                                          "intersection_point": intersection_point}
+                intersection_events_list.append(new_intersection_event)
+            
+        return intersection_events_list
     
     # .................................................................................................................
     
@@ -270,7 +368,7 @@ class Fixed_Line_Cross:
     
     def draw_self(self, display_frame,
                   line_color = (255, 0, 255), line_thickness = 2, 
-                  line_point_1_radius = 7, line_point_2_radius = 3,
+                  line_point_1_radius = 3, line_point_2_radius = 3,
                   draw_normal = True):
         
         ''' 
@@ -310,11 +408,13 @@ class Fixed_Line_Cross:
             npt1, npt2 = self._calculate_unit_normal_plot_points()
             npt1_px = to_px_func(npt1)
             npt2_px = to_px_func(npt2)
-            cv2.line(display_frame, npt1_px, npt2_px, line_color, 1, cv2.LINE_AA)
+            cv2.arrowedLine(display_frame, npt1_px, npt2_px, line_color, 1, cv2.LINE_AA, tipLength = 0.2)
+            
+        return display_frame
             
     # .................................................................................................................
     
-    def draw_other_line_segment(self, display_frame, line_start_xy, line_end_xy,
+    def draw_other_line_segment(self, display_frame, segment_start_xy, segment_end_xy,
                                 line_color = (0, 255, 255), line_thickness = 1,
                                 line_point_1_radius = 7, line_point_2_radius = 3):
         
@@ -336,17 +436,20 @@ class Fixed_Line_Cross:
             to_px_func = lambda pointxy: tuple(np.int32(np.round(pointxy)))
             
         # Convert the other line endpoints positions to pixels for drawing
-        other_pt1_px = to_px_func(line_start_xy)
-        other_pt2_px = to_px_func(line_end_xy)
+        other_pt1_px = to_px_func(segment_start_xy)
+        other_pt2_px = to_px_func(segment_end_xy)
         
         # Draw the line itself
-        cv2.line(display_frame, other_pt1_px, other_pt2_px, line_color, line_thickness, cv2.LINE_AA)
+        cv2.arrowedLine(display_frame, other_pt1_px, other_pt2_px, line_color, line_thickness, cv2.LINE_AA,
+                        tipLength = 0.1)
         
+        '''
         # Draw the endpoints if needed
         if line_point_1_radius > 0:
             cv2.circle(display_frame, other_pt1_px, line_point_1_radius, line_color, -1, cv2.LINE_AA)
         if line_point_2_radius > 0:
             cv2.circle(display_frame, other_pt2_px, line_point_2_radius, line_color, -1, cv2.LINE_AA)
+        '''
     
     # .................................................................................................................
     
@@ -537,48 +640,10 @@ def line_segment_intersection(line_segment_a, line_segment_b):
 # .....................................................................................................................
 
 
-'''
-pt1 = (200, 200)
-pt2 = (300, 100)
-
-pt1_a = np.array(pt1)
-pt2_a = np.array(pt2)
-
-cv2.destroyAllWindows()
-blank_frame = np.zeros((500, 500, 3), dtype=np.uint8)
-cv2.line(blank_frame, pt1, pt2, (0, 255, 255), 1, cv2.LINE_AA)
-cv2.circle(blank_frame, pt1, 7, (0, 255, 255), -1, cv2.LINE_AA)
-cv2.circle(blank_frame, pt2, 3, (0, 255, 255), -1, cv2.LINE_AA)
-
-
-
-
-lvec = pt2_a - pt1_a
-rot_angle = -((np.pi/2) -  np.math.atan2(-lvec[1], lvec[0]))
-
-print(pt1, pt2, lvec)
-print("ROT:", rot_angle, "({})".format(np.degrees(rot_angle)))
-
-rot_mat = calculate_rotation_matrix(rot_angle)
-
-shift_pt1 = pt1 - pt1_a
-shift_pt2 = pt2 - pt1_a
-
-rot_pt1 = np.matmul(rot_mat, shift_pt1) + pt1_a
-rot_pt2 = np.matmul(rot_mat, shift_pt2) + pt1_a
-
-print(rot_pt1, rot_pt2)
-
-cv2.line(blank_frame, tuple(np.int32(rot_pt1)), tuple(np.int32(rot_pt2)), (255, 255, 0), 1, cv2.LINE_AA)
-
-cv2.imshow("LINE", blank_frame)
-cv2.waitKey(500)
-'''
-
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Re-orientation Demo
 
-if __name__ == "__main__" and False:
+if __name__ == "__main__" and True:
     
     cv2.destroyAllWindows()
     
@@ -615,7 +680,8 @@ if __name__ == "__main__" and False:
     cv2.imshow("REORIENTED", alt_frame)
     cv2.moveWindow("REORIENTED", 100 + frame_size, 10)
     
-    cv2.waitKey(0)
+    cv2.waitKey(0)    
+    cv2.destroyAllWindows()
     
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Intersection Demo
@@ -647,7 +713,7 @@ if __name__ == "__main__" and True:
         fixed_line.draw_other_line_segment(fixed_line_frame, *line_b, line_color = (255, 255, 0), line_thickness = 1)
             
         # Draw fixed line intersection result into frame
-        lines_intersect, cross_dir, intersection_point = fixed_line.intersection(*line_b)
+        lines_intersect, cross_dir, intersection_point = fixed_line.segment_intersection(*line_b)
         disp_text = "INTERSECTION ({})".format(cross_dir) if lines_intersect else "No intersection"
         disp_color = (0, 0, 255) if lines_intersect else (0, 255, 0)
         cv2.putText(fixed_line_frame, disp_text, (5, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, disp_color, 1, cv2.LINE_AA)
@@ -660,9 +726,7 @@ if __name__ == "__main__" and True:
         line_frame = np.zeros((frame_size, frame_size, 3), dtype=np.uint8)
         line_zip_lists = zip([line_a, line_b], [(0, 255, 255), (255, 255, 0)])
         for (pt1, pt2), each_color in line_zip_lists:
-            cv2.line(line_frame, tuple(pt1), tuple(pt2), each_color, 1, cv2.LINE_AA)
-            cv2.circle(line_frame, tuple(pt1), 7, each_color, -1, cv2.LINE_AA)
-            cv2.circle(line_frame, tuple(pt2), 3, each_color, -1, cv2.LINE_AA)
+            cv2.arrowedLine(line_frame, tuple(pt1), tuple(pt2), each_color, 1, cv2.LINE_AA, tipLength = 0.1)
             
         # Draw line intersection result into frame
         lines_intersect = line_segment_intersection(line_a, line_b)
@@ -717,7 +781,7 @@ if __name__ == "__main__" and False:
     
     # Time the fixed line class intersection test
     t1f = perf_counter()
-    check_fast = [fixed_line.intersection(*each_line)[0] for each_line in check_lines]
+    check_fast = [fixed_line.segment_intersection(*each_line)[0] for each_line in check_lines]
     t2f = perf_counter()
     
     # Time the line segment intersection function

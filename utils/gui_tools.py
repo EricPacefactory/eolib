@@ -33,8 +33,8 @@ def _safe_quit():
 def _make_file_type_list(file_exts, file_exts_labels):
     
     # Make lists out of inputs (in case they aren't already!) for convenience
-    file_ext_list = file_exts if type(file_exts) in [list, tuple] else [file_exts]
-    file_ext_labels_list = file_exts_labels if type(file_exts_labels) in [list, tuple] else [file_exts_labels]
+    file_ext_list = file_exts if type(file_exts) in {list, tuple} else [file_exts]
+    file_ext_labels_list = file_exts_labels if type(file_exts_labels) in {list, tuple} else [file_exts_labels]
     
     # Build the file type selection
     if file_exts is None and file_exts_labels is None:
@@ -82,7 +82,38 @@ def tkinter_missing_message(quit_after_message = True):
     
     if quit_after_message:
         _safe_quit()
+
+# .....................................................................................................................
+
+def gui_folder_select(start_dir = "~/Desktop",
+                      window_title = "Select a folder",
+                      quit_if_missing = True):
     
+    # First make sure tkinter exists, before trying to use it!
+    if not tkinter_exists():
+        tkinter_missing_message(quit_after_message = True)
+    
+    import tkinter
+    from tkinter import filedialog
+        
+    # UI: Hide main window
+    root = tkinter.Tk()
+    root.withdraw()
+    
+    # Ask user to select a folder
+    start_dir = os.path.expanduser(start_dir)
+    folder_select = filedialog.askdirectory(initialdir = start_dir, title = window_title)
+    
+    # Get rid of UI elements
+    root.destroy()    
+    
+    # If needed, quit when a file isn't selected
+    if quit_if_missing and folder_select is None:
+        print("", "No folder selected", "Quitting...", "", sep="\n")
+        _safe_quit()
+    
+    return folder_select
+
 # .....................................................................................................................
 
 def gui_file_select(start_dir="~/Desktop", 
@@ -108,7 +139,7 @@ def gui_file_select(start_dir="~/Desktop",
     file_select = filedialog.askopenfilename(initialdir=start_dir, 
                                              title=window_title, 
                                              filetypes=file_type_list)
-    file_select = file_select if file_select not in [None, ""] else None
+    file_select = file_select if file_select not in {None, ""} else None
     
     # Get rid of UI elements
     root.destroy()
@@ -182,7 +213,7 @@ def gui_text_entry(prompt_message,
     # Get user entry (and clean it up)
     user_entry = simpledialog.askstring(window_title, prompt_message)
     user_entry = user_entry.strip() if type(user_entry) is str else user_entry
-    user_entry = user_entry if user_entry not in [None, ""] else None
+    user_entry = user_entry if user_entry not in {None, ""} else None
     
     # Get rid of UI elements
     root.destroy() 
@@ -250,7 +281,7 @@ def gui_save(start_dir="~/Desktop",
     file_save_path = filedialog.asksaveasfilename(initialdir = start_dir, 
                                                   title = window_title, 
                                                   filetypes = file_type_list)
-    file_save_path = file_save_path if file_save_path not in [None, ""] else None
+    file_save_path = file_save_path if file_save_path not in {None, ""} else None
     
     # Get rid of UI elements
     root.destroy()    

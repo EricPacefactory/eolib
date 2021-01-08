@@ -219,8 +219,9 @@ def dynamic_import_from_module(dot_path, item_name, remove_dotpy_ext = True, rep
     # from dot_path import item_name as import_item
     try:
         lib_import = import_module(dot_path)
-    except ModuleNotFoundError:
-        raise ImportError("Bad dynamic import path: {}".format(dot_path))
+    except ModuleNotFoundError as err:
+        print("", "Error:", "  Possibly bad dynamic import path: {}".format(dot_path), "", sep = "\n" )
+        raise err
         
     try:
         import_item = getattr(lib_import, item_name)

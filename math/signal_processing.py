@@ -10,6 +10,8 @@ Created on Mon Sep 17 16:22:52 2018
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Imports
 
+from itertools import tee
+
 import numpy as np
 
 
@@ -21,6 +23,30 @@ import numpy as np
 
 # ---------------------------------------------------------------------------------------------------------------------
 #%% Define functions
+
+# .....................................................................................................................
+
+def pairs_of(input_iterable):
+    
+    ''''
+    Function intended as a for-loop helper.
+    Takes in an iterable of elements and returns an iterable of pairs of elements, from the original inputs
+    
+    Example:
+         input: [1,2,3,4,5]
+        output: [(1, 2), (2, 3), (3, 4), (4, 5)]
+    
+    Taken from python itertools recipes:
+        https://docs.python.org/3/library/itertools.html
+    '''
+    
+    # Duplicate the input iterable, then advance one copy forward and combine to get sequential pairs of the input
+    iter_copy1, iter_copy2 = tee(input_iterable)
+    next(iter_copy2, None)
+    
+    return zip(iter_copy1, iter_copy2)
+
+# .....................................................................................................................  
 
 def create_smoothing_kernel(num_samples = 3, window = "auto"):
     
@@ -239,7 +265,7 @@ def windowed_data(input_1d_array, window_length, return_edge_windows = True):
     '''
     
     # Convert input to a numpy array if needed
-    if type(input_1d_array) in [tuple, list]:
+    if type(input_1d_array) in {tuple, list}:
         input_1d_array = np.array(input_1d_array)
     
     # Make sure the window length is odd
@@ -471,10 +497,135 @@ def value_hysteresis_filter(input_1d_array, falling_threshold, rising_threshold,
 
 # .....................................................................................................................
 
-def fill_boolean_signal_gaps(input_1d_boolean, sample_gap_threshold, fill_high_gaps = True,
-                             fill_start_gaps = False, fill_end_gaps = False):
+def fill_boolean_signal_gaps(input_boolean_1d, gap_threshold, join_highs = True,
+                             initial_boundary_state = True, final_boundary_state = True,
+                             output_dtype = np.bool):
     
     '''
+    Fills gaps between 2 points in a boolean signal based on a gap threshold value
+    Can be though of a boolean signal denoiser
+    
+    By default, this function will fill gaps between two high points 
+    in a signal but this can be flipped by setting 'join_highs' to False
+    
+    Inputs:
+        input_boolean_1d -> (numpy array) Input boolean signal to fill in
+        
+        gap_threshold -> (Integer) Gaps in the input signal that are equal or shorter than this value
+                         will be filled in
+        
+        join_highs -> (Boolean) If True, gaps between 'high' points in the input signal will be filled in,
+                      otherwise the behavior will be inverted.
+                      More informally, if True this function fills in valleys, otherwise it removes spikes
+        
+        initial_boundary_state -> (Boolean) Determines what the value of the signal is/was
+                                  one sample 'prior' to the first available sample. Controls whether gaps
+                                  at the start of the signal could be filled or left as-is
+        
+        final_boundary_state -> (Boolean) Determines what the value of the signal is/was
+                                one sample 'after' the last available sample. Controls whether gaps at
+                                the end of the signal could be filled or left as-is
+    Outputs:
+        output_boolean_1d
+    
+    Example gaps (assuming 'join_highs' is True):
+        Gap of '1': [..., 1, 1, 0, 1, 1, 1, 1, ...]
+        Gap of '2': [..., 1, 1, 0, 0, 1, 1, 1, ...]
+        Gap of '3': [..., 1, 1, 0, 0, 0, 1, 1, ...]
+    
+    Example application on signal:
+        Assume
+            input_boolean_1d = [0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]
+            gap_threshold = 3
+            join_highs = True
+            initial_boundary_state = False
+            final_boundary_state = True
+        
+        output = [0, 1, 1*, 1, 1*, 1*, 1, 1*, 1*, 1*, 1, 0, 0, 0, 0, 1, 1*]
+        -> (modifications marked with *)
+    '''
+    
+    # Don't need to do anything if the gap threshold value is 0 or negative
+    if gap_threshold < 1:
+        return input_boolean_1d
+    
+    # Figure out what input signal we'll actually process by inverting the input if needed,
+    # Goal is to treat problem as filling gaps between high points regardless
+    num_samples = len(input_boolean_1d)
+    if join_highs:
+        signal_to_process = np.array(input_boolean_1d, dtype = np.bool)
+        corrected_initial_state = initial_boundary_state
+        corrected_final_state = final_boundary_state
+    else:
+        signal_to_process = (1 - np.array(input_boolean_1d, dtype = np.bool))
+        corrected_initial_state = (not initial_boundary_state)
+        corrected_final_state = (not final_boundary_state)
+    
+    # Start by assuming a fully 'high' signal and then look to 'carve out' larger 'low' gaps in the signal
+    output_boolean_1d = np.ones(num_samples, dtype = output_dtype)
+    
+    # Find falling/rising edges in the input signal, since we'll use these to locate large gaps to 'carve out'
+    first_signal_value = signal_to_process[0]
+    signal_edges = np.diff(signal_to_process, prepend = first_signal_value)
+    edge_idxs = np.nonzero(signal_edges)[0]
+    
+    # Edges have to occur in either fall/rise/fall/rise or rise/fall/rise/fall pattern, figure out which it is,
+    # then separate edge indices into arrays for falling/rising by indexing 'every-other' entry appropriately
+    first_edge_is_rising = (signal_to_process[0] == 0)
+    last_edge_is_falling = (signal_to_process[-1] == 0)
+    first_fall_idx = 1 if first_edge_is_rising else 0
+    first_rise_idx = first_fall_idx + 1
+    fall_edge_idxs = edge_idxs[first_fall_idx::2]
+    rise_edge_idxs = edge_idxs[first_rise_idx::2]
+    
+    # To help look for 'low gaps' to fill, we want to generate fall-to-rise edge index pairs (i.e. valley events)
+    # Since we may have skipped over an initial rise edge, we'll always have num fall idxs >= num rise idxs
+    num_fall_rise_pairs = len(rise_edge_idxs)
+    paired_falls = fall_edge_idxs[:num_fall_rise_pairs]
+    paired_rises = rise_edge_idxs[:num_fall_rise_pairs]
+    
+    # Calculate all high gaps and 'carve out' regions where the gaps are larger than the gap threshold
+    high_gaps = (paired_rises - paired_falls)
+    to_fill_idxs = np.where(high_gaps > (gap_threshold))[0]
+    for each_idx in to_fill_idxs:
+        start_idx = paired_falls[each_idx]
+        end_idx = paired_rises[each_idx]
+        output_boolean_1d[start_idx:end_idx] = 0
+    
+    # Handle initial boundary state
+    large_initial_gap = (edge_idxs[0] > gap_threshold)
+    boundary_started_low = (corrected_initial_state == False)
+    need_to_carve_initial_gap = (first_edge_is_rising and (large_initial_gap or boundary_started_low))
+    if need_to_carve_initial_gap:
+        start_idx = 0
+        end_idx = edge_idxs[0]
+        output_boolean_1d[start_idx:end_idx] = 0
+    
+    # Handle final boundary state
+    large_final_gap = ((num_samples - edge_idxs[-1]) > gap_threshold)
+    boundary_ended_low = (corrected_final_state == False)
+    need_to_carve_final_gap = (last_edge_is_falling and (large_final_gap or boundary_ended_low))
+    if need_to_carve_final_gap:
+        start_idx = fall_edge_idxs[-1]
+        end_idx = num_samples
+        output_boolean_1d[start_idx:end_idx] = 0
+    
+    # Finally un-invert the signal if the input signal to process was originally inverted
+    if not join_highs:
+        output_boolean_1d = (1 - output_boolean_1d)
+    
+    return output_boolean_1d
+
+# .....................................................................................................................
+
+def fill_boolean_signal_gaps_LEGACY(input_1d_boolean, sample_gap_threshold, fill_high_gaps = True,
+                                    fill_start_gaps = False, fill_end_gaps = False):
+    
+    '''
+    
+    DUE TO SLOWNESS, THIS FUNCTION HAS BEEN REPLACED WITH A NEWER IMPLEMENTATION!
+    Newer implementation is ~100x faster!
+    
     (slow non-vectorized)
     Function which is used to remove spurious noise from boolean signals by 
     'filling in' sections where the signal may be (erroneously) on/off for a short time.
